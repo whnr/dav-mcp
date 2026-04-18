@@ -129,7 +129,7 @@ describe('Validation Module', () => {
       expect(() => validateInput(createEventSchema, input)).not.toThrow();
     });
 
-    test('should accept datetime string with all_day: true (strips time in iCal generation)', () => {
+    test('should reject datetime strings with all_day: true — must use YYYY-MM-DD', () => {
       const input = {
         calendar_url: 'https://example.com/calendar/',
         summary: 'Birthday Party',
@@ -137,7 +137,17 @@ describe('Validation Module', () => {
         end_date: '2026-05-26T00:00:00Z',
         all_day: true,
       };
-      expect(() => validateInput(createEventSchema, input)).not.toThrow();
+      expect(() => validateInput(createEventSchema, input)).toThrow('YYYY-MM-DD');
+    });
+
+    test('should reject mixed date-only start + datetime end (auto-detected as all-day)', () => {
+      const input = {
+        calendar_url: 'https://example.com/calendar/',
+        summary: 'Bad Mix',
+        start_date: '2026-05-25',
+        end_date: '2026-05-26T23:59:59',
+      };
+      expect(() => validateInput(createEventSchema, input)).toThrow('YYYY-MM-DD');
     });
 
     test('should reject date-only string with end before start', () => {

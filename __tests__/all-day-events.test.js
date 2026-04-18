@@ -68,23 +68,20 @@ describe('create_event iCal generation', () => {
     expect(iCalString).not.toMatch(/^DTEND:\d{8}T/m);
   });
 
-  test('all_day:true with same-day datetimes advances DTEND to next day', async () => {
-    await createEvent.handler({
+  test('all_day:true with datetime strings fails validation with clear error', async () => {
+    await expect(createEvent.handler({
       ...baseArgs,
       start_date: '2026-04-26T00:00:00Z',
       end_date: '2026-04-26T23:59:59',
       all_day: true,
-    });
-    const { iCalString } = mockCreateCalendarObject.mock.calls[0][0];
-    expect(iCalString).toContain('DTSTART;VALUE=DATE:20260426');
-    expect(iCalString).toContain('DTEND;VALUE=DATE:20260427');
+    })).rejects.toThrow('YYYY-MM-DD');
   });
 
-  test('all_day:true with multi-day datetime range preserves the end date', async () => {
+  test('all_day:true with multi-day date-only range emits correct VALUE=DATE span', async () => {
     await createEvent.handler({
       ...baseArgs,
-      start_date: '2026-04-26T00:00:00Z',
-      end_date: '2026-04-28T00:00:00Z',
+      start_date: '2026-04-26',
+      end_date: '2026-04-28',
       all_day: true,
     });
     const { iCalString } = mockCreateCalendarObject.mock.calls[0][0];

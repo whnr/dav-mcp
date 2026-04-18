@@ -56,6 +56,13 @@ export const createEventSchema = z.object({
 }).refine((data) => new Date(data.end_date) > new Date(data.start_date), {
   message: 'End date must be after start date',
   path: ['end_date'],
+}).refine((data) => {
+  const isAllDay = data.all_day || /^\d{4}-\d{2}-\d{2}$/.test(data.start_date);
+  if (!isAllDay) return true;
+  return /^\d{4}-\d{2}-\d{2}$/.test(data.start_date) && /^\d{4}-\d{2}-\d{2}$/.test(data.end_date);
+}, {
+  message: 'All-day events require both start_date and end_date in YYYY-MM-DD format (e.g. "2026-05-25", "2026-05-26")',
+  path: ['end_date'],
 });
 
 export const updateEventSchema = z.object({

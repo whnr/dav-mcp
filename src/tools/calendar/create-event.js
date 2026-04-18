@@ -59,19 +59,8 @@ export const createEvent = {
     const isAllDay = validated.all_day || /^\d{4}-\d{2}-\d{2}$/.test(validated.start_date);
     let dtstart, dtend;
     if (isAllDay) {
-      // Slice to date portion first so datetime strings (e.g. "2026-05-25T00:00:00Z") also work with all_day: true
-      const startDate = validated.start_date.substring(0, 10).replace(/-/g, '');
-      let endDate = validated.end_date.substring(0, 10).replace(/-/g, '');
-      // RFC 5545: DTEND is exclusive for VALUE=DATE. If end slices to same day as start
-      // (e.g. user passes "2026-04-26T23:59:59" with all_day:true), advance by one day.
-      if (endDate <= startDate) {
-        const yr = parseInt(startDate.substring(0, 4), 10);
-        const mo = parseInt(startDate.substring(4, 6), 10) - 1;
-        const dy = parseInt(startDate.substring(6, 8), 10);
-        endDate = new Date(Date.UTC(yr, mo, dy + 1)).toISOString().substring(0, 10).replace(/-/g, '');
-      }
-      dtstart = `DTSTART;VALUE=DATE:${startDate}`;
-      dtend = `DTEND;VALUE=DATE:${endDate}`;
+      dtstart = `DTSTART;VALUE=DATE:${validated.start_date.replace(/-/g, '')}`;
+      dtend = `DTEND;VALUE=DATE:${validated.end_date.replace(/-/g, '')}`;
     } else {
       dtstart = `DTSTART:${formatICalDate(new Date(validated.start_date))}`;
       dtend = `DTEND:${formatICalDate(new Date(validated.end_date))}`;
