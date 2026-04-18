@@ -11,6 +11,9 @@ const dateTimeWithOptionalOffset = z.union([
   z.string().regex(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}$/, 'Invalid datetime format') // Without timezone
 ]);
 
+// Helper: Date-only string for all-day events (YYYY-MM-DD)
+const dateOnly = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Invalid date format (use YYYY-MM-DD for all-day events)');
+
 // Helper: Optional URL that gracefully handles LLM placeholder values
 // Transforms common LLM-generated placeholders ("", "unknown", "default", etc.) to undefined
 const optionalUrl = (message) =>
@@ -45,8 +48,9 @@ export const listEventsSchema = z.object({
 export const createEventSchema = z.object({
   calendar_url: z.string().url('Invalid calendar URL'),
   summary: z.string().min(1, 'Summary is required').max(500),
-  start_date: dateTimeWithOptionalOffset,
-  end_date: dateTimeWithOptionalOffset,
+  start_date: z.union([dateTimeWithOptionalOffset, dateOnly]),
+  end_date: z.union([dateTimeWithOptionalOffset, dateOnly]),
+  all_day: z.boolean().optional(),
   description: z.string().max(5000).optional(),
   location: z.string().max(500).optional(),
 }).refine((data) => new Date(data.end_date) > new Date(data.start_date), {

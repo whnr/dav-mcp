@@ -60,11 +60,11 @@ export const updateEventFields = {
           },
           DTSTART: {
             type: 'string',
-            description: 'Start datetime (ISO 8601 or iCal format: 20250128T100000Z)'
+            description: 'Start datetime (ISO 8601 or iCal format: 20250128T100000Z). For all-day events use key "DTSTART;VALUE=DATE" with value "20260525" (YYYYMMDD).'
           },
           DTEND: {
             type: 'string',
-            description: 'End datetime (ISO 8601 or iCal format)'
+            description: 'End datetime (ISO 8601 or iCal format). For all-day events use key "DTEND;VALUE=DATE" with value "20260526" (YYYYMMDD, exclusive end date).'
           },
           STATUS: {
             type: 'string',
