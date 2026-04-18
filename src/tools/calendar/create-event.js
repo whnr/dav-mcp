@@ -22,11 +22,15 @@ export const createEvent = {
       },
       start_date: {
         type: 'string',
-        description: 'Start date in ISO 8601 format',
+        description: 'Start date. Use ISO 8601 datetime (e.g., "2026-05-25T10:00:00Z") for timed events, or YYYY-MM-DD (e.g., "2026-05-25") for all-day events.',
       },
       end_date: {
         type: 'string',
-        description: 'End date in ISO 8601 format',
+        description: 'End date. Use ISO 8601 datetime for timed events, or YYYY-MM-DD for all-day events. For a single all-day event, set end_date to the next day (e.g., start "2026-05-25", end "2026-05-26").',
+      },
+      all_day: {
+        type: 'boolean',
+        description: 'Set to true to create an all-day event. Can be omitted when start_date/end_date are in YYYY-MM-DD format — the format is auto-detected.',
       },
       description: {
         type: 'string',
@@ -35,6 +39,11 @@ export const createEvent = {
       location: {
         type: 'string',
         description: 'Event location (optional)',
+      },
+      extra_fields: {
+        type: 'object',
+        description: 'Additional RFC 5545 (https://www.rfc-editor.org/rfc/rfc5545) properties to include, keyed by UPPERCASE property name. Use for RRULE, ATTENDEE, X-* custom properties, etc.',
+        additionalProperties: { type: 'string' },
       },
     },
     required: ['calendar_url', 'summary', 'start_date', 'end_date'],
@@ -52,15 +61,29 @@ export const createEvent = {
     const description = validated.description ? sanitizeICalString(validated.description) : '';
     const location = validated.location ? sanitizeICalString(validated.location) : '';
 
+    const isAllDay = validated.all_day || /^\d{4}-\d{2}-\d{2}$/.test(validated.start_date);
+    let dtstart, dtend;
+    if (isAllDay) {
+      dtstart = `DTSTART;VALUE=DATE:${validated.start_date.replace(/-/g, '')}`;
+      dtend = `DTEND;VALUE=DATE:${validated.end_date.replace(/-/g, '')}`;
+    } else {
+      dtstart = `DTSTART:${formatICalDate(new Date(validated.start_date))}`;
+      dtend = `DTEND:${formatICalDate(new Date(validated.end_date))}`;
+    }
+
+    const extraLines = validated.extra_fields
+      ? Object.entries(validated.extra_fields).map(([k, v]) => `${k}:${v}`).join('\n')
+      : '';
+
     const iCalString = `BEGIN:VCALENDAR
 VERSION:2.0
 PRODID:-//tsdav-mcp-server//EN
 BEGIN:VEVENT
 UID:${uid}
 DTSTAMP:${formatICalDate(now)}
-DTSTART:${formatICalDate(new Date(validated.start_date))}
-DTEND:${formatICalDate(new Date(validated.end_date))}
-SUMMARY:${summary}${description ? `\nDESCRIPTION:${description}` : ''}${location ? `\nLOCATION:${location}` : ''}
+${dtstart}
+${dtend}
+SUMMARY:${summary}${description ? `\nDESCRIPTION:${description}` : ''}${location ? `\nLOCATION:${location}` : ''}${extraLines ? `\n${extraLines}` : ''}
 END:VEVENT
 END:VCALENDAR`;
 

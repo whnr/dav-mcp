@@ -1,33 +1,13 @@
 import { tsdavManager } from '../../tsdav-client.js';
-import { validateInput } from '../../validation.js';
+import { validateInput, updateEventFieldsSchema, sanitizeICalString } from '../../validation.js';
 import { formatSuccess } from '../../formatters.js';
-import { z } from 'zod';
 import { updateFields } from 'tsdav-utils';
 
-/**
- * Schema for field-based event updates
- * Supports all RFC 5545 iCalendar properties via tsdav-utils
- * Common fields: SUMMARY, DESCRIPTION, LOCATION, DTSTART, DTEND, STATUS
- * Custom properties: Any X-* property
- */
-const updateEventFieldsSchema = z.object({
-  event_url: z.string().url('Event URL must be a valid URL'),
-  event_etag: z.string().min(1, 'Event etag is required'),
-  fields: z.record(z.string()).optional()
-});
+const dateOnlyPattern = /^\d{4}-\d{2}-\d{2}$/;
 
-/**
- * Field-agnostic event update tool powered by tsdav-utils
- * Supports all RFC 5545 iCalendar properties without validation
- *
- * Features:
- * - Any standard VEVENT property (SUMMARY, DESCRIPTION, LOCATION, DTSTART, etc.)
- * - Custom X-* properties for extensions
- * - Field-agnostic: no pre-defined field list required
- */
 export const updateEventFields = {
   name: 'update_event',
-  description: 'PREFERRED: Update event fields without iCal formatting. Supports: SUMMARY (title), DESCRIPTION (details), LOCATION (place), DTSTART (start time), DTEND (end time), STATUS (TENTATIVE/CONFIRMED/CANCELLED), and any RFC 5545 property including custom X-* properties (e.g., X-ZOOM-LINK, X-MEETING-ROOM).',
+  description: 'PREFERRED: Update specific fields of a calendar event. All parameters are optional except event_url and event_etag — only provided fields are changed. Use extra_fields for any RFC 5545 (https://www.rfc-editor.org/rfc/rfc5545) property not covered by named params (e.g. RRULE, ATTENDEE, X-* custom properties).',
   inputSchema: {
     type: 'object',
     properties: {
@@ -39,38 +19,39 @@ export const updateEventFields = {
         type: 'string',
         description: 'The etag of the event (required for conflict detection)'
       },
-      fields: {
+      summary: {
+        type: 'string',
+        description: 'Event title'
+      },
+      description: {
+        type: 'string',
+        description: 'Event description/details'
+      },
+      location: {
+        type: 'string',
+        description: 'Physical or virtual meeting location'
+      },
+      start_date: {
+        type: 'string',
+        description: 'Start date. ISO 8601 datetime (e.g. "2026-05-25T10:00:00Z") for timed events, or YYYY-MM-DD (e.g. "2026-05-25") for all-day events.'
+      },
+      end_date: {
+        type: 'string',
+        description: 'End date. ISO 8601 datetime for timed events, or YYYY-MM-DD for all-day events. Exclusive end — for a single all-day event set end_date to the next day.'
+      },
+      all_day: {
+        type: 'boolean',
+        description: 'Convert to/from all-day event. When true, start_date and end_date must be in YYYY-MM-DD format. Can be omitted when the date format is unambiguous.'
+      },
+      status: {
+        type: 'string',
+        enum: ['TENTATIVE', 'CONFIRMED', 'CANCELLED'],
+        description: 'Event status'
+      },
+      extra_fields: {
         type: 'object',
-        description: 'Fields to update - use UPPERCASE property names (e.g., SUMMARY, LOCATION, DTSTART). Any RFC 5545 property or custom X-* property is supported.',
-        additionalProperties: {
-          type: 'string'
-        },
-        properties: {
-          SUMMARY: {
-            type: 'string',
-            description: 'Event title/summary'
-          },
-          DESCRIPTION: {
-            type: 'string',
-            description: 'Event description/details'
-          },
-          LOCATION: {
-            type: 'string',
-            description: 'Physical or virtual meeting location'
-          },
-          DTSTART: {
-            type: 'string',
-            description: 'Start datetime (ISO 8601 or iCal format: 20250128T100000Z)'
-          },
-          DTEND: {
-            type: 'string',
-            description: 'End datetime (ISO 8601 or iCal format)'
-          },
-          STATUS: {
-            type: 'string',
-            description: 'Event status: TENTATIVE, CONFIRMED, or CANCELLED'
-          }
-        }
+        description: 'Additional RFC 5545 properties (https://www.rfc-editor.org/rfc/rfc5545) to set, keyed by UPPERCASE property name. Use for RRULE, ATTENDEE, X-* custom properties, etc.',
+        additionalProperties: { type: 'string' }
       }
     },
     required: ['event_url', 'event_etag']
@@ -79,7 +60,6 @@ export const updateEventFields = {
     const validated = validateInput(updateEventFieldsSchema, args);
     const client = tsdavManager.getCalDavClient();
 
-    // Step 1: Fetch the current event from server
     const calendarUrl = validated.event_url.substring(0, validated.event_url.lastIndexOf('/') + 1);
     const currentEvents = await client.fetchCalendarObjects({
       calendar: { url: calendarUrl },
@@ -92,11 +72,36 @@ export const updateEventFields = {
 
     const calendarObject = currentEvents[0];
 
-    // Step 2: Update fields using tsdav-utils (field-agnostic)
-    // Accepts any RFC 5545 property name (UPPERCASE)
-    const updatedData = updateFields(calendarObject, validated.fields || {});
+    const isAllDay = validated.all_day || (validated.start_date && dateOnlyPattern.test(validated.start_date));
 
-    // Step 3: Send the updated event back to server
+    const fields = {};
+
+    if (validated.summary !== undefined) fields.SUMMARY = sanitizeICalString(validated.summary);
+    if (validated.description !== undefined) fields.DESCRIPTION = sanitizeICalString(validated.description);
+    if (validated.location !== undefined) fields.LOCATION = sanitizeICalString(validated.location);
+    if (validated.status !== undefined) fields.STATUS = validated.status;
+
+    if (validated.start_date !== undefined) {
+      if (isAllDay) {
+        fields['DTSTART;VALUE=DATE'] = validated.start_date.replace(/-/g, '');
+      } else {
+        fields.DTSTART = validated.start_date;
+      }
+    }
+    if (validated.end_date !== undefined) {
+      if (isAllDay) {
+        fields['DTEND;VALUE=DATE'] = validated.end_date.replace(/-/g, '');
+      } else {
+        fields.DTEND = validated.end_date;
+      }
+    }
+
+    if (validated.extra_fields) {
+      Object.assign(fields, validated.extra_fields);
+    }
+
+    const updatedData = updateFields(calendarObject, fields);
+
     const updateResponse = await client.updateCalendarObject({
       calendarObject: {
         url: validated.event_url,
@@ -107,8 +112,8 @@ export const updateEventFields = {
 
     return formatSuccess('Event updated successfully', {
       etag: updateResponse.etag,
-      updated_fields: Object.keys(validated.fields || {}),
-      message: `Updated ${Object.keys(validated.fields || {}).length} field(s): ${Object.keys(validated.fields || {}).join(', ')}`
+      updated_fields: Object.keys(fields),
+      message: `Updated ${Object.keys(fields).length} field(s): ${Object.keys(fields).join(', ')}`
     });
   }
 };

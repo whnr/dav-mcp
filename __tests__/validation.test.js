@@ -107,6 +107,61 @@ describe('Validation Module', () => {
     });
   });
 
+  describe('All-day event support', () => {
+    test('should accept date-only start/end for all-day event', () => {
+      const input = {
+        calendar_url: 'https://example.com/calendar/',
+        summary: 'My Birthday',
+        start_date: '2026-05-25',
+        end_date: '2026-05-26',
+        all_day: true,
+      };
+      expect(() => validateInput(createEventSchema, input)).not.toThrow();
+    });
+
+    test('should accept date-only strings without all_day flag (auto-detect)', () => {
+      const input = {
+        calendar_url: 'https://example.com/calendar/',
+        summary: 'Public Holiday',
+        start_date: '2026-12-25',
+        end_date: '2026-12-26',
+      };
+      expect(() => validateInput(createEventSchema, input)).not.toThrow();
+    });
+
+    test('should reject datetime strings with all_day: true — must use YYYY-MM-DD', () => {
+      const input = {
+        calendar_url: 'https://example.com/calendar/',
+        summary: 'Birthday Party',
+        start_date: '2026-05-25T00:00:00Z',
+        end_date: '2026-05-26T00:00:00Z',
+        all_day: true,
+      };
+      expect(() => validateInput(createEventSchema, input)).toThrow('YYYY-MM-DD');
+    });
+
+    test('should reject mixed date-only start + datetime end (auto-detected as all-day)', () => {
+      const input = {
+        calendar_url: 'https://example.com/calendar/',
+        summary: 'Bad Mix',
+        start_date: '2026-05-25',
+        end_date: '2026-05-26T23:59:59',
+      };
+      expect(() => validateInput(createEventSchema, input)).toThrow('YYYY-MM-DD');
+    });
+
+    test('should reject date-only string with end before start', () => {
+      const input = {
+        calendar_url: 'https://example.com/calendar/',
+        summary: 'Bad Event',
+        start_date: '2026-05-26',
+        end_date: '2026-05-25',
+        all_day: true,
+      };
+      expect(() => validateInput(createEventSchema, input)).toThrow();
+    });
+  });
+
   describe('optionalUrl preprocessing (LLM robustness)', () => {
     describe('calendarQuerySchema', () => {
       test('should accept valid URL', () => {

@@ -141,6 +141,15 @@ function formatDateTime(icalTime) {
   if (!icalTime) return '';
 
   try {
+    if (icalTime.isDate) {
+      return icalTime.toJSDate().toLocaleDateString('en-US', {
+        year: 'numeric',
+        month: 'long',
+        day: 'numeric',
+        timeZone: 'UTC',
+      });
+    }
+
     // Convert ICAL.Time to JavaScript Date
     const jsDate = icalTime.toJSDate();
 
