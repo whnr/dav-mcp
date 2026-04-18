@@ -61,7 +61,15 @@ export const createEvent = {
     if (isAllDay) {
       // Slice to date portion first so datetime strings (e.g. "2026-05-25T00:00:00Z") also work with all_day: true
       const startDate = validated.start_date.substring(0, 10).replace(/-/g, '');
-      const endDate = validated.end_date.substring(0, 10).replace(/-/g, '');
+      let endDate = validated.end_date.substring(0, 10).replace(/-/g, '');
+      // RFC 5545: DTEND is exclusive for VALUE=DATE. If end slices to same day as start
+      // (e.g. user passes "2026-04-26T23:59:59" with all_day:true), advance by one day.
+      if (endDate <= startDate) {
+        const yr = parseInt(startDate.substring(0, 4), 10);
+        const mo = parseInt(startDate.substring(4, 6), 10) - 1;
+        const dy = parseInt(startDate.substring(6, 8), 10);
+        endDate = new Date(Date.UTC(yr, mo, dy + 1)).toISOString().substring(0, 10).replace(/-/g, '');
+      }
       dtstart = `DTSTART;VALUE=DATE:${startDate}`;
       dtend = `DTEND;VALUE=DATE:${endDate}`;
     } else {
