@@ -4,30 +4,27 @@ import { formatSuccess } from '../../formatters.js';
 import { z } from 'zod';
 import { updateFields } from 'tsdav-utils';
 
-/**
- * Schema for field-based event updates
- * Supports all RFC 5545 iCalendar properties via tsdav-utils
- * Common fields: SUMMARY, DESCRIPTION, LOCATION, DTSTART, DTEND, STATUS
- * Custom properties: Any X-* property
- */
+const dateOnlyPattern = /^\d{4}-\d{2}-\d{2}$/;
+
 const updateEventFieldsSchema = z.object({
   event_url: z.string().url('Event URL must be a valid URL'),
   event_etag: z.string().min(1, 'Event etag is required'),
-  fields: z.record(z.string()).optional()
+  fields: z.record(z.string()).optional(),
+  all_day: z.boolean().optional(),
+}).refine((data) => {
+  if (!data.all_day) return true;
+  const fields = data.fields || {};
+  if (fields.DTSTART && !dateOnlyPattern.test(fields.DTSTART)) return false;
+  if (fields.DTEND && !dateOnlyPattern.test(fields.DTEND)) return false;
+  return true;
+}, {
+  message: 'All-day events require DTSTART and DTEND in YYYY-MM-DD format (e.g. "2026-05-25", "2026-05-26")',
+  path: ['fields'],
 });
 
-/**
- * Field-agnostic event update tool powered by tsdav-utils
- * Supports all RFC 5545 iCalendar properties without validation
- *
- * Features:
- * - Any standard VEVENT property (SUMMARY, DESCRIPTION, LOCATION, DTSTART, etc.)
- * - Custom X-* properties for extensions
- * - Field-agnostic: no pre-defined field list required
- */
 export const updateEventFields = {
   name: 'update_event',
-  description: 'PREFERRED: Update event fields without iCal formatting. Supports: SUMMARY (title), DESCRIPTION (details), LOCATION (place), DTSTART (start time), DTEND (end time), STATUS (TENTATIVE/CONFIRMED/CANCELLED), and any RFC 5545 property including custom X-* properties (e.g., X-ZOOM-LINK, X-MEETING-ROOM).',
+  description: 'PREFERRED: Update event fields without iCal formatting. Supports: SUMMARY (title), DESCRIPTION (details), LOCATION (place), DTSTART (start time), DTEND (end time), STATUS (TENTATIVE/CONFIRMED/CANCELLED), all_day (convert to/from all-day), and any RFC 5545 property including custom X-* properties.',
   inputSchema: {
     type: 'object',
     properties: {
@@ -39,9 +36,13 @@ export const updateEventFields = {
         type: 'string',
         description: 'The etag of the event (required for conflict detection)'
       },
+      all_day: {
+        type: 'boolean',
+        description: 'Set to true to convert the event to all-day. When true, DTSTART and DTEND in fields must be in YYYY-MM-DD format (e.g. "2026-05-25"). end_date is exclusive — for a single all-day event use start+1 day.',
+      },
       fields: {
         type: 'object',
-        description: 'Fields to update - use UPPERCASE property names (e.g., SUMMARY, LOCATION, DTSTART). Any RFC 5545 property or custom X-* property is supported.',
+        description: 'Fields to update — use UPPERCASE property names. Any RFC 5545 property or custom X-* property is supported.',
         additionalProperties: {
           type: 'string'
         },
@@ -60,11 +61,11 @@ export const updateEventFields = {
           },
           DTSTART: {
             type: 'string',
-            description: 'Start datetime (ISO 8601 or iCal format: 20250128T100000Z). For all-day events use key "DTSTART;VALUE=DATE" with value "20260525" (YYYYMMDD).'
+            description: 'Start date/time. For timed events use iCal datetime format (e.g. "20260525T100000Z"). For all-day events use YYYY-MM-DD (e.g. "2026-05-25") with all_day: true.',
           },
           DTEND: {
             type: 'string',
-            description: 'End datetime (ISO 8601 or iCal format). For all-day events use key "DTEND;VALUE=DATE" with value "20260526" (YYYYMMDD, exclusive end date).'
+            description: 'End date/time. For timed events use iCal datetime format. For all-day events use YYYY-MM-DD with all_day: true. Exclusive end — set to the day after the last day of the event.',
           },
           STATUS: {
             type: 'string',
@@ -79,7 +80,6 @@ export const updateEventFields = {
     const validated = validateInput(updateEventFieldsSchema, args);
     const client = tsdavManager.getCalDavClient();
 
-    // Step 1: Fetch the current event from server
     const calendarUrl = validated.event_url.substring(0, validated.event_url.lastIndexOf('/') + 1);
     const currentEvents = await client.fetchCalendarObjects({
       calendar: { url: calendarUrl },
@@ -92,11 +92,22 @@ export const updateEventFields = {
 
     const calendarObject = currentEvents[0];
 
-    // Step 2: Update fields using tsdav-utils (field-agnostic)
-    // Accepts any RFC 5545 property name (UPPERCASE)
-    const updatedData = updateFields(calendarObject, validated.fields || {});
+    // When all_day is set, transform DTSTART/DTEND from YYYY-MM-DD to DTSTART;VALUE=DATE:YYYYMMDD
+    // so tsdav-utils serialises them correctly as date-only properties.
+    let fields = { ...(validated.fields || {}) };
+    if (validated.all_day) {
+      if (fields.DTSTART) {
+        fields['DTSTART;VALUE=DATE'] = fields.DTSTART.replace(/-/g, '');
+        delete fields.DTSTART;
+      }
+      if (fields.DTEND) {
+        fields['DTEND;VALUE=DATE'] = fields.DTEND.replace(/-/g, '');
+        delete fields.DTEND;
+      }
+    }
 
-    // Step 3: Send the updated event back to server
+    const updatedData = updateFields(calendarObject, fields);
+
     const updateResponse = await client.updateCalendarObject({
       calendarObject: {
         url: validated.event_url,

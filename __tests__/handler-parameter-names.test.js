@@ -196,6 +196,45 @@ describe('Event handler: calendarObject parameter name', () => {
   });
 });
 
+describe('update_event all_day flag', () => {
+  beforeEach(() => jest.clearAllMocks());
+
+  test('transforms DTSTART/DTEND to VALUE=DATE keys when all_day: true', async () => {
+    await updateEventFields.handler({
+      event_url: 'http://example.com/cal/event.ics',
+      event_etag: '"etag-123"',
+      all_day: true,
+      fields: { DTSTART: '2026-05-25', DTEND: '2026-05-26' },
+    });
+    const fieldsPassedToUpdateFields = mockUpdateFields.mock.calls[0][1];
+    expect(fieldsPassedToUpdateFields).toHaveProperty('DTSTART;VALUE=DATE', '20260525');
+    expect(fieldsPassedToUpdateFields).toHaveProperty('DTEND;VALUE=DATE', '20260526');
+    expect(fieldsPassedToUpdateFields).not.toHaveProperty('DTSTART');
+    expect(fieldsPassedToUpdateFields).not.toHaveProperty('DTEND');
+  });
+
+  test('rejects all_day: true with datetime DTSTART', async () => {
+    await expect(
+      updateEventFields.handler({
+        event_url: 'http://example.com/cal/event.ics',
+        event_etag: '"etag-123"',
+        all_day: true,
+        fields: { DTSTART: '2026-05-25T00:00:00Z', DTEND: '2026-05-26' },
+      })
+    ).rejects.toThrow('YYYY-MM-DD');
+  });
+
+  test('passes fields through unchanged when all_day is not set', async () => {
+    await updateEventFields.handler({
+      event_url: 'http://example.com/cal/event.ics',
+      event_etag: '"etag-123"',
+      fields: { SUMMARY: 'Updated title' },
+    });
+    const fieldsPassedToUpdateFields = mockUpdateFields.mock.calls[0][1];
+    expect(fieldsPassedToUpdateFields).toEqual({ SUMMARY: 'Updated title' });
+  });
+});
+
 describe('Contact handler: vCard parameter name', () => {
   beforeEach(() => jest.clearAllMocks());
 
