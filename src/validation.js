@@ -53,6 +53,7 @@ export const createEventSchema = z.object({
   all_day: z.boolean().optional(),
   description: z.string().max(5000).optional(),
   location: z.string().max(500).optional(),
+  extra_fields: z.record(z.string()).optional(),
 }).refine((data) => new Date(data.end_date) > new Date(data.start_date), {
   message: 'End date must be after start date',
   path: ['end_date'],
@@ -63,6 +64,28 @@ export const createEventSchema = z.object({
 }, {
   message: 'All-day events require both start_date and end_date in YYYY-MM-DD format (e.g. "2026-05-25", "2026-05-26")',
   path: ['end_date'],
+});
+
+export const updateEventFieldsSchema = z.object({
+  event_url: z.string().url('Event URL must be a valid URL'),
+  event_etag: z.string().min(1, 'Event etag is required'),
+  summary: z.string().min(1).max(500).optional(),
+  description: z.string().max(5000).optional(),
+  location: z.string().max(500).optional(),
+  start_date: z.union([dateTimeWithOptionalOffset, dateOnly]).optional(),
+  end_date: z.union([dateTimeWithOptionalOffset, dateOnly]).optional(),
+  all_day: z.boolean().optional(),
+  status: z.enum(['TENTATIVE', 'CONFIRMED', 'CANCELLED']).optional(),
+  extra_fields: z.record(z.string()).optional(),
+}).refine((data) => {
+  const isAllDay = data.all_day || (data.start_date && dateOnly.safeParse(data.start_date).success);
+  if (!isAllDay) return true;
+  if (data.start_date && !dateOnly.safeParse(data.start_date).success) return false;
+  if (data.end_date && !dateOnly.safeParse(data.end_date).success) return false;
+  return true;
+}, {
+  message: 'All-day events require start_date and end_date in YYYY-MM-DD format (e.g. "2026-05-25", "2026-05-26")',
+  path: ['start_date'],
 });
 
 export const updateEventSchema = z.object({

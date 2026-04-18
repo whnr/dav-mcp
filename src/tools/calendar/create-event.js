@@ -40,6 +40,11 @@ export const createEvent = {
         type: 'string',
         description: 'Event location (optional)',
       },
+      extra_fields: {
+        type: 'object',
+        description: 'Additional RFC 5545 (https://www.rfc-editor.org/rfc/rfc5545) properties to include, keyed by UPPERCASE property name. Use for RRULE, ATTENDEE, X-* custom properties, etc.',
+        additionalProperties: { type: 'string' },
+      },
     },
     required: ['calendar_url', 'summary', 'start_date', 'end_date'],
   },
@@ -66,6 +71,10 @@ export const createEvent = {
       dtend = `DTEND:${formatICalDate(new Date(validated.end_date))}`;
     }
 
+    const extraLines = validated.extra_fields
+      ? Object.entries(validated.extra_fields).map(([k, v]) => `${k}:${v}`).join('\n')
+      : '';
+
     const iCalString = `BEGIN:VCALENDAR
 VERSION:2.0
 PRODID:-//tsdav-mcp-server//EN
@@ -74,7 +83,7 @@ UID:${uid}
 DTSTAMP:${formatICalDate(now)}
 ${dtstart}
 ${dtend}
-SUMMARY:${summary}${description ? `\nDESCRIPTION:${description}` : ''}${location ? `\nLOCATION:${location}` : ''}
+SUMMARY:${summary}${description ? `\nDESCRIPTION:${description}` : ''}${location ? `\nLOCATION:${location}` : ''}${extraLines ? `\n${extraLines}` : ''}
 END:VEVENT
 END:VCALENDAR`;
 

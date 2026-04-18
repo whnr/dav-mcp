@@ -140,7 +140,7 @@ describe('Error propagation (no internal try-catch)', () => {
       updateEventFields.handler({
         event_url: 'http://example.com/cal/event.ics',
         event_etag: '"etag-123"',
-        fields: { SUMMARY: 'x' },
+        summary: 'x',
       })
     ).rejects.toThrow('Server down');
   });
@@ -184,7 +184,7 @@ describe('Event handler: calendarObject parameter name', () => {
     await updateEventFields.handler({
       event_url: 'http://example.com/cal/event.ics',
       event_etag: '"etag-123"',
-      fields: { SUMMARY: 'Updated' },
+      summary: 'Updated',
     });
 
     expect(mockUpdateCalendarObject).toHaveBeenCalledTimes(1);
@@ -199,12 +199,13 @@ describe('Event handler: calendarObject parameter name', () => {
 describe('update_event all_day flag', () => {
   beforeEach(() => jest.clearAllMocks());
 
-  test('transforms DTSTART/DTEND to VALUE=DATE keys when all_day: true', async () => {
+  test('transforms start_date/end_date to VALUE=DATE keys when all_day: true', async () => {
     await updateEventFields.handler({
       event_url: 'http://example.com/cal/event.ics',
       event_etag: '"etag-123"',
       all_day: true,
-      fields: { DTSTART: '2026-05-25', DTEND: '2026-05-26' },
+      start_date: '2026-05-25',
+      end_date: '2026-05-26',
     });
     const fieldsPassedToUpdateFields = mockUpdateFields.mock.calls[0][1];
     expect(fieldsPassedToUpdateFields).toHaveProperty('DTSTART;VALUE=DATE', '20260525');
@@ -213,25 +214,26 @@ describe('update_event all_day flag', () => {
     expect(fieldsPassedToUpdateFields).not.toHaveProperty('DTEND');
   });
 
-  test('rejects all_day: true with datetime DTSTART', async () => {
+  test('rejects all_day: true with datetime start_date', async () => {
     await expect(
       updateEventFields.handler({
         event_url: 'http://example.com/cal/event.ics',
         event_etag: '"etag-123"',
         all_day: true,
-        fields: { DTSTART: '2026-05-25T00:00:00Z', DTEND: '2026-05-26' },
+        start_date: '2026-05-25T00:00:00Z',
+        end_date: '2026-05-26',
       })
     ).rejects.toThrow('YYYY-MM-DD');
   });
 
-  test('passes fields through unchanged when all_day is not set', async () => {
+  test('passes named params as UPPERCASE fields when all_day is not set', async () => {
     await updateEventFields.handler({
       event_url: 'http://example.com/cal/event.ics',
       event_etag: '"etag-123"',
-      fields: { SUMMARY: 'Updated title' },
+      summary: 'Updated title',
     });
     const fieldsPassedToUpdateFields = mockUpdateFields.mock.calls[0][1];
-    expect(fieldsPassedToUpdateFields).toEqual({ SUMMARY: 'Updated title' });
+    expect(fieldsPassedToUpdateFields).toHaveProperty('SUMMARY', 'Updated title');
   });
 });
 
