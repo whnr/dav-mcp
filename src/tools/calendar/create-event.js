@@ -59,8 +59,11 @@ export const createEvent = {
     const isAllDay = validated.all_day || /^\d{4}-\d{2}-\d{2}$/.test(validated.start_date);
     let dtstart, dtend;
     if (isAllDay) {
-      dtstart = `DTSTART;VALUE=DATE:${validated.start_date.replace(/-/g, '')}`;
-      dtend = `DTEND;VALUE=DATE:${validated.end_date.replace(/-/g, '')}`;
+      // Slice to date portion first so datetime strings (e.g. "2026-05-25T00:00:00Z") also work with all_day: true
+      const startDate = validated.start_date.substring(0, 10).replace(/-/g, '');
+      const endDate = validated.end_date.substring(0, 10).replace(/-/g, '');
+      dtstart = `DTSTART;VALUE=DATE:${startDate}`;
+      dtend = `DTEND;VALUE=DATE:${endDate}`;
     } else {
       dtstart = `DTSTART:${formatICalDate(new Date(validated.start_date))}`;
       dtend = `DTEND:${formatICalDate(new Date(validated.end_date))}`;

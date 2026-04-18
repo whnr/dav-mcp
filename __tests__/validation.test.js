@@ -129,6 +129,17 @@ describe('Validation Module', () => {
       expect(() => validateInput(createEventSchema, input)).not.toThrow();
     });
 
+    test('should accept datetime string with all_day: true (strips time in iCal generation)', () => {
+      const input = {
+        calendar_url: 'https://example.com/calendar/',
+        summary: 'Birthday Party',
+        start_date: '2026-05-25T00:00:00Z',
+        end_date: '2026-05-26T00:00:00Z',
+        all_day: true,
+      };
+      expect(() => validateInput(createEventSchema, input)).not.toThrow();
+    });
+
     test('should reject date-only string with end before start', () => {
       const input = {
         calendar_url: 'https://example.com/calendar/',
