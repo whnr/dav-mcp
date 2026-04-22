@@ -13,8 +13,13 @@ import ICAL from 'ical.js';
 
 /**
  * Parse iCal data string to extract event properties (RFC 5545 compliant)
+ *
+ * @param {string} icalData - Raw iCalendar text
+ * @param {{ start: ICAL.Time, end: ICAL.Time } | null} targetRange - When provided and the
+ *   event is recurring, expands the RRULE to find the first occurrence within the range so
+ *   the displayed "When" reflects the actual queried occurrence rather than the master DTSTART.
  */
-function parseICalEvent(icalData) {
+function parseICalEvent(icalData, targetRange = null) {
   try {
     const jcalData = ICAL.parse(icalData);
     const comp = new ICAL.Component(jcalData);
@@ -26,13 +31,33 @@ function parseICalEvent(icalData) {
 
     const event = new ICAL.Event(vevent);
 
+    let dtstart = event.startDate;
+    let dtend = event.endDate;
+
+    if (event.isRecurring() && targetRange) {
+      const expand = new ICAL.RecurExpansion({
+        component: vevent,
+        dtstart: event.startDate,
+      });
+      let occ;
+      while ((occ = expand.next())) {
+        if (occ.compare(targetRange.end) > 0) break;
+        if (occ.compare(targetRange.start) >= 0) {
+          dtstart = occ;
+          dtend = occ.clone();
+          dtend.addDuration(event.duration);
+          break;
+        }
+      }
+    }
+
     return {
       summary: event.summary || '',
       description: event.description || '',
       location: event.location || '',
       uid: event.uid || '',
-      dtstart: event.startDate,
-      dtend: event.endDate,
+      dtstart,
+      dtend,
       isRecurring: event.isRecurring(),
       rrule: event.isRecurring() ? vevent.getFirstPropertyValue('rrule') : null,
       organizer: vevent.getFirstPropertyValue('organizer'),
@@ -143,19 +168,24 @@ function formatDateTime(icalTime) {
   try {
     // Convert ICAL.Time to JavaScript Date
     const jsDate = icalTime.toJSDate();
+    // ical.js v2 stores timezone as icalTime.zone.tzid (an ICAL.Timezone object),
+    // not as the deprecated icalTime.timezone string property.
+    // Fall back to UTC for floating times or if no zone is set.
+    const tzid = icalTime.zone?.tzid;
+    const tz = (tzid && tzid !== 'floating') ? tzid : 'UTC';
 
     const dateStr = jsDate.toLocaleDateString('en-US', {
       year: 'numeric',
       month: 'long',
       day: 'numeric',
-      timeZone: icalTime.timezone === 'UTC' ? 'UTC' : undefined,
+      timeZone: tz,
     });
 
     const timeStr = jsDate.toLocaleTimeString('en-US', {
       hour: '2-digit',
       minute: '2-digit',
       timeZoneName: 'short',
-      timeZone: icalTime.timezone === 'UTC' ? 'UTC' : undefined,
+      timeZone: tz,
     });
 
     return `${dateStr}, ${timeStr}`;
@@ -168,8 +198,12 @@ function formatDateTime(icalTime) {
 /**
  * Format a single calendar event to Markdown
  */
-export function formatEvent(event, calendarName = 'Unknown Calendar') {
-  const parsed = parseICalEvent(event.data);
+export function formatEvent(event, calendarName = 'Unknown Calendar', timeRange = null) {
+  const targetRange = timeRange ? {
+    start: ICAL.Time.fromDateTimeString(timeRange.start),
+    end: ICAL.Time.fromDateTimeString(timeRange.end),
+  } : null;
+  const parsed = parseICalEvent(event.data, targetRange);
 
   const startDate = formatDateTime(parsed.dtstart);
   const endDate = formatDateTime(parsed.dtend);
@@ -229,7 +263,7 @@ export function formatEvent(event, calendarName = 'Unknown Calendar') {
 /**
  * Format a list of calendar events to LLM-friendly Markdown
  */
-export function formatEventList(events, calendarName = 'Unknown Calendar') {
+export function formatEventList(events, calendarName = 'Unknown Calendar', timeRange = null) {
   if (!events || events.length === 0) {
     return {
       content: [{
@@ -243,7 +277,7 @@ export function formatEventList(events, calendarName = 'Unknown Calendar') {
 
   events.forEach((event, index) => {
     output += `### ${index + 1}. `;
-    output += formatEvent(event, calendarName).replace(/^## /, '') + '\n';
+    output += formatEvent(event, calendarName, timeRange).replace(/^## /, '') + '\n';
   });
 
   output += `---\n<details>\n<summary>Raw Data (JSON)</summary>\n\n\`\`\`json\n`;
