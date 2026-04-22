@@ -38,6 +38,11 @@ export const listEvents = {
 
     const events = await client.fetchCalendarObjects(options);
 
-    return formatEventList(events, calendar);
+    const timeRange = validated.time_range_start ? {
+      start: validated.time_range_start,
+      end: validated.time_range_end,
+    } : null;
+
+    return formatEventList(events, calendar, timeRange);
   },
 };

@@ -93,6 +93,11 @@ export const calendarQuery = {
       ? (calendarsToSearch[0].displayName || calendarsToSearch[0].url)
       : `All Calendars (${calendarsToSearch.length})`;
 
-    return formatEventList(filteredEvents, calendarName);
+    const timeRange = validated.time_range_start ? {
+      start: validated.time_range_start,
+      end: validated.time_range_end,
+    } : null;
+
+    return formatEventList(filteredEvents, calendarName, timeRange);
   },
 };
