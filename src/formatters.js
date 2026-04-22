@@ -13,11 +13,6 @@ import ICAL from 'ical.js';
 
 /**
  * Parse iCal data string to extract event properties (RFC 5545 compliant)
- *
- * @param {string} icalData - Raw iCalendar text
- * @param {{ start: ICAL.Time, end: ICAL.Time } | null} targetRange - When provided and the
- *   event is recurring, expands the RRULE to find the first occurrence within the range so
- *   the displayed "When" reflects the actual queried occurrence rather than the master DTSTART.
  */
 function parseICalEvent(icalData, targetRange = null) {
   try {
@@ -177,9 +172,7 @@ function formatDateTime(icalTime) {
 
     // Convert ICAL.Time to JavaScript Date
     const jsDate = icalTime.toJSDate();
-    // ical.js v2 stores timezone as icalTime.zone.tzid (an ICAL.Timezone object),
-    // not as the deprecated icalTime.timezone string property.
-    // Fall back to UTC for floating times or if no zone is set.
+    // ical.js v2: timezone lives in zone.tzid, not the deprecated timezone property.
     const tzid = icalTime.zone?.tzid;
     const tz = (tzid && tzid !== 'floating') ? tzid : 'UTC';
 
